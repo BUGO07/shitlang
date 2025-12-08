@@ -1,4 +1,6 @@
-use crate::token::{Delimiter, Literal, Location, NumericType, Operator, Token, TokenType};
+use crate::token::{
+    Delimiter, Keyword, Literal, Location, NumericType, Operator, Token, TokenType,
+};
 
 pub struct Lexer {
     source: String,
@@ -128,8 +130,23 @@ impl Lexer {
                                         }
                                     }
                                     continue;
+                                }
+                                return Err("Unexpected '/' character".into());
+                            }
+                            '&' | '|' => {
+                                if ch == next {
+                                    self.advance(1);
+                                    match ch {
+                                        '&' => Operator::LogicalAnd,
+                                        '|' => Operator::LogicalOr,
+                                        _ => unreachable!(),
+                                    }
                                 } else {
-                                    return Err("Unexpected '/' character".into());
+                                    match ch {
+                                        '&' => Operator::BitAnd,
+                                        '|' => Operator::BitOr,
+                                        _ => unreachable!(),
+                                    }
                                 }
                             }
                             _ => match ch {
@@ -202,7 +219,36 @@ impl Lexer {
                 }
 
                 'a'..='z' | 'A'..='Z' | '_' => {
-                    todo!()
+                    let mut ident = String::new();
+                    ident.push(ch);
+
+                    while let Some(&c) = chars.get(self.current_loc.index) {
+                        match c {
+                            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' => {
+                                self.advance(1);
+                                ident.push(c);
+                            }
+                            _ => break,
+                        }
+                    }
+
+                    let token = match ident.as_str() {
+                        "let" => TokenType::Keyword(Keyword::Let),
+                        "func" => TokenType::Keyword(Keyword::Func),
+                        "return" => TokenType::Keyword(Keyword::Return),
+                        "if" => TokenType::Keyword(Keyword::If),
+                        "else" => TokenType::Keyword(Keyword::Else),
+                        "while" => TokenType::Keyword(Keyword::While),
+                        "for" => TokenType::Keyword(Keyword::For),
+                        "break" => TokenType::Keyword(Keyword::Break),
+                        "continue" => TokenType::Keyword(Keyword::Continue),
+                        "import" => TokenType::Keyword(Keyword::Import),
+                        "as" => TokenType::Keyword(Keyword::As),
+                        "true" | "false" => TokenType::Literal(Literal::Boolean(ident)),
+                        _ => TokenType::Identifier(ident),
+                    };
+
+                    self.tokens.push(Token::new(token, self.current_loc));
                 }
 
                 _ => {}
