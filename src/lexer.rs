@@ -34,7 +34,7 @@ impl Lexer {
         &self.tokens
     }
 
-    pub fn tokenize(&mut self) -> Result<(), String> {
+    pub fn tokenize(&mut self) -> anyhow::Result<()> {
         let chars = self.source.chars().collect::<Vec<_>>();
 
         while let Some(&ch) = chars.get(self.current_loc.index) {
@@ -79,7 +79,7 @@ impl Lexer {
                                 }
                             }
                         } else {
-                            return Err("Unexpected '=' character".into());
+                            anyhow::bail!("Unexpected '=' character");
                         }
                     }
 
@@ -135,7 +135,7 @@ impl Lexer {
                                     }
                                     continue;
                                 }
-                                return Err("Unexpected '/' character".into());
+                                anyhow::bail!("Unexpected '/' character");
                             }
                             '&' | '|' => {
                                 if ch == next {
@@ -172,7 +172,7 @@ impl Lexer {
                         self.tokens
                             .push(Token::new(TokenType::Operator(operator), self.current_loc));
                     } else {
-                        return Err("Unexpected operator character".into());
+                        anyhow::bail!("Unexpected operator character");
                     }
                 }
 
@@ -193,11 +193,10 @@ impl Lexer {
                                 self.advance(1);
                             }
                             '.' => {
-                                if has_dot {
-                                    return Err(
-                                        "Invalid numeric literal: multiple decimal points".into()
-                                    );
-                                }
+                                anyhow::ensure!(
+                                    !has_dot,
+                                    "Invalid numeric literal: multiple decimal points"
+                                );
                                 has_dot = true;
                                 self.advance(1);
                                 num.push('.');
@@ -245,15 +244,14 @@ impl Lexer {
                             "us" => NumericType::USize,
                             "f32" => NumericType::F32,
                             "f64" => NumericType::F64,
-                            _ => return Err(format!("Unknown numeric type suffix '{}'", suffix)),
+                            _ => anyhow::bail!("Unknown numeric type suffix '{}'", suffix),
                         }
                     };
 
-                    if has_dot && !matches!(numeric_type, NumericType::F32 | NumericType::F64) {
-                        return Err(
-                            "Invalid numeric literal: integer literal cannot contain '.'".into(),
-                        );
-                    }
+                    anyhow::ensure!(
+                        !has_dot || matches!(numeric_type, NumericType::F32 | NumericType::F64),
+                        "Invalid numeric literal: integer literal cannot contain '.'",
+                    );
 
                     self.tokens.push(Token::new(
                         TokenType::Literal(Literal::Numeric(num, numeric_type)),

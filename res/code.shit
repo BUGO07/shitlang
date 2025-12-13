@@ -1,0 +1,14 @@
+func add_three(i32 x, i32 y, i32 z) => i32 {
+    // return x + y + z; // this works too
+    x + y + z // rust-like
+}
+
+func main() => i32 {
+    let output: String = "the result"; // explicit types
+    let x: i32 = 21;
+    let y = 69; // inferred types
+    let z = 420;
+    print("{} is: {}", output, add_three(x, y, z));
+
+    // return 0; // implicit
+}

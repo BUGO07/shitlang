@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
     pub token_type: TokenType,
     pub location: Location,
@@ -12,15 +12,14 @@ impl Token {
         }
     }
 }
-
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Location {
     pub line: usize,
     pub column: usize,
     pub index: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenType {
     Identifier(String),
     Keyword(Keyword),
@@ -29,14 +28,14 @@ pub enum TokenType {
     Delimiter(Delimiter),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Literal {
     Numeric(String, NumericType),
     String(String),
     Boolean(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NumericType {
     I8,
     I16,
@@ -52,7 +51,7 @@ pub enum NumericType {
     F64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keyword {
     Let,
     Func,
@@ -69,7 +68,7 @@ pub enum Keyword {
     As,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operator {
     Plus,          // +
     Minus,         // -
@@ -99,7 +98,7 @@ pub enum Operator {
     BitNotAssign,  // ~=
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Delimiter {
     LBrace,    // {
     RBrace,    // }

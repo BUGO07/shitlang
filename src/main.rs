@@ -1,31 +1,21 @@
 use std::time::Instant;
 
-use crate::lexer::Lexer;
+use crate::{lexer::Lexer, syntax::AbstractSyntaxTree};
 
 mod lexer;
+mod syntax;
 mod token;
 
-const CODE: &str = r#"
-6____7 5us.32
-"#;
-
-fn main() {
-    let mut lexer = Lexer::new(CODE.to_string());
+fn main() -> anyhow::Result<()> {
+    let mut lexer = Lexer::new(std::fs::read_to_string("res/code.shit")?);
 
     let time = Instant::now();
-    let res = lexer.tokenize();
+    lexer.tokenize()?;
     println!("Lexing took {:?}", time.elapsed());
-    if let Err(err) = res {
-        println!("Lexer error: {:?} at {:?}", err, lexer.location());
-        return;
-    }
 
-    println!(
-        "{:?}",
-        lexer
-            .tokens()
-            .iter()
-            .map(|x| &x.token_type)
-            .collect::<Vec<_>>(),
-    );
+    dbg!(lexer.tokens());
+
+    let _ = AbstractSyntaxTree::new(lexer.tokens().clone()).build()?;
+
+    Ok(())
 }
