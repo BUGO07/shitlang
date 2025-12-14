@@ -1,9 +1,10 @@
 use std::time::Instant;
 
-use crate::{lexer::Lexer, syntax::Parser};
+use crate::{lexer::Lexer, parser::Parser, sema::SymbolTable};
 
 mod lexer;
-mod syntax;
+mod parser;
+mod sema;
 mod token;
 
 fn main() -> anyhow::Result<()> {
@@ -24,7 +25,13 @@ fn main() -> anyhow::Result<()> {
     let time = Instant::now();
     parser.parse()?;
     println!("Syntactic analysis took {:?}", time.elapsed());
-    dbg!(parser.global_scope);
+    dbg!(&parser.global_scope);
+
+    let mut sym_table = SymbolTable::new();
+    let time = Instant::now();
+    sym_table.build(&parser.global_scope)?;
+    println!("Semantic analysis took {:?}", time.elapsed());
+    dbg!(&sym_table);
 
     println!("Total time: {:?}", total_time.elapsed());
     Ok(())

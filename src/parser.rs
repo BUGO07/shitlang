@@ -1,4 +1,4 @@
-use crate::token::{Delimiter, Keyword, Literal, Operator, Token, TokenType};
+use crate::token::{Delimiter, Keyword, Literal, Location, Operator, Token, TokenType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stmt {
@@ -11,21 +11,27 @@ pub enum Stmt {
     Func {
         name: String,
         params: Vec<Param>,
-        return_type: Option<Type>,
-        body: Box<Stmt>,
+        ty: Option<Type>,
+        body: Box<Statement>,
     },
     Scope {
-        statements: Vec<Stmt>,
+        statements: Vec<Statement>,
     },
     While {
         condition: Expr,
-        body: Box<Stmt>,
+        body: Box<Statement>,
     },
     Return {
         value: Option<Expr>,
     },
     Break,
     Continue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Statement {
+    pub stmt: Stmt,
+    pub location: Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,9 +57,15 @@ pub enum Expr {
     },
     If {
         condition: Box<Expr>,
-        then_branch: Vec<Stmt>,
-        else_branch: Option<Vec<Stmt>>,
+        then_branch: Vec<Statement>,
+        else_branch: Option<Vec<Statement>>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Expression {
+    pub expr: Expr,
+    pub location: Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,7 +82,7 @@ pub struct Param {
 pub struct Parser {
     pub tokens: Vec<Token>,
     pub current_index: usize,
-    pub global_scope: Vec<Stmt>,
+    pub global_scope: Vec<Statement>,
 }
 
 impl Parser {
@@ -97,11 +109,11 @@ impl Parser {
 
     fn expect_delim(&mut self, expected: Delimiter) -> anyhow::Result<&Token> {
         anyhow::ensure!(
-            matches!(self.peek().token_type, TokenType::Delimiter(d) if d == expected),
+            matches!(self.peek().ty, TokenType::Delimiter(d) if d == expected),
             "Expected delimiter {:?} at {:?}, found {:?}",
             expected,
             self.peek().location,
-            self.peek().token_type
+            self.peek().ty
         );
         Ok(self.advance())
     }
@@ -119,10 +131,7 @@ impl Parser {
     fn parse_assignment(&mut self) -> anyhow::Result<Expr> {
         let expr = self.parse_binary(1)?;
 
-        if matches!(
-            self.peek().token_type,
-            TokenType::Operator(Operator::Assign)
-        ) {
+        if matches!(self.peek().ty, TokenType::Operator(Operator::Assign)) {
             self.advance();
             let value = self.parse_assignment()?;
             return Ok(Expr::Assignment {
@@ -137,13 +146,13 @@ impl Parser {
     fn parse_binary(&mut self, min_rank: u8) -> anyhow::Result<Expr> {
         let mut left = self.parse_unary()?;
 
-        while let TokenType::Operator(op) = self.peek().token_type {
+        while let TokenType::Operator(op) = self.peek().ty {
             let rank = op.rank();
             if rank < min_rank {
                 break;
             }
 
-            let operator = if let TokenType::Operator(op) = self.advance().token_type {
+            let operator = if let TokenType::Operator(op) = self.advance().ty {
                 op
             } else {
                 unreachable!()
@@ -162,14 +171,10 @@ impl Parser {
 
     fn parse_unary(&mut self) -> anyhow::Result<Expr> {
         if let TokenType::Operator(
-            _op @ (Operator::Minus | Operator::LogicalNot | Operator::BitNot),
-        ) = self.peek().token_type
+            operator @ (Operator::Minus | Operator::LogicalNot | Operator::BitNot),
+        ) = self.peek().ty
         {
-            let operator = if let TokenType::Operator(op) = self.advance().token_type {
-                op
-            } else {
-                unreachable!()
-            };
+            self.advance();
 
             let operand = self.parse_unary()?;
             return Ok(Expr::Unary {
@@ -182,14 +187,11 @@ impl Parser {
     }
 
     fn parse_primary(&mut self) -> anyhow::Result<Expr> {
-        match self.advance().token_type.clone() {
+        match self.advance().ty.clone() {
             TokenType::Literal(lit) => Ok(Expr::Literal(lit)),
 
             TokenType::Identifier(name) => {
-                if matches!(
-                    self.peek().token_type,
-                    TokenType::Delimiter(Delimiter::LParen)
-                ) {
+                if matches!(self.peek().ty, TokenType::Delimiter(Delimiter::LParen)) {
                     self.parse_call(name)
                 } else {
                     Ok(Expr::Variable(name))
@@ -205,20 +207,25 @@ impl Parser {
             TokenType::Keyword(Keyword::If) => {
                 let condition = self.parse_expr()?;
                 let then_branch = match self.parse_scope()? {
-                    Stmt::Scope { statements } => statements,
+                    Statement {
+                        stmt: Stmt::Scope { statements },
+                        ..
+                    } => statements,
                     _ => unreachable!(),
                 };
 
-                let else_branch =
-                    if matches!(self.peek().token_type, TokenType::Keyword(Keyword::Else)) {
-                        self.advance();
-                        match self.parse_scope()? {
-                            Stmt::Scope { statements } => Some(statements),
-                            _ => unreachable!(),
-                        }
-                    } else {
-                        None
-                    };
+                let else_branch = if matches!(self.peek().ty, TokenType::Keyword(Keyword::Else)) {
+                    self.advance();
+                    match self.parse_scope()? {
+                        Statement {
+                            stmt: Stmt::Scope { statements },
+                            ..
+                        } => Some(statements),
+                        _ => unreachable!(),
+                    }
+                } else {
+                    None
+                };
 
                 Ok(Expr::If {
                     condition: Box::new(condition),
@@ -235,16 +242,10 @@ impl Parser {
         self.expect_delim(Delimiter::LParen)?;
         let mut args = Vec::new();
 
-        if !matches!(
-            self.peek().token_type,
-            TokenType::Delimiter(Delimiter::RParen)
-        ) {
+        if !matches!(self.peek().ty, TokenType::Delimiter(Delimiter::RParen)) {
             loop {
                 args.push(self.parse_expr()?);
-                if matches!(
-                    self.peek().token_type,
-                    TokenType::Delimiter(Delimiter::Comma)
-                ) {
+                if matches!(self.peek().ty, TokenType::Delimiter(Delimiter::Comma)) {
                     self.advance();
                 } else {
                     break;
@@ -260,12 +261,12 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self) -> anyhow::Result<Stmt> {
-        match self.peek().token_type {
+        match self.peek().ty {
             TokenType::Keyword(Keyword::Let) => self.parse_let(),
             TokenType::Keyword(Keyword::Func) => self.parse_function(),
             TokenType::Keyword(Keyword::While) => self.parse_while(),
             TokenType::Keyword(Keyword::Return) => self.parse_return(),
-            TokenType::Delimiter(Delimiter::LBrace) => self.parse_scope(),
+            TokenType::Delimiter(Delimiter::LBrace) => self.parse_scope().map(|x| x.stmt),
             TokenType::Keyword(Keyword::Break) => {
                 self.advance();
                 self.expect_delim(Delimiter::Semicolon)?;
@@ -280,19 +281,24 @@ impl Parser {
         }
     }
 
-    fn parse_scope(&mut self) -> anyhow::Result<Stmt> {
+    fn parse_scope(&mut self) -> anyhow::Result<Statement> {
         self.expect_delim(Delimiter::LBrace)?;
+        let location = self.peek().location;
         let mut statements = Vec::new();
 
-        while !matches!(
-            self.peek().token_type,
-            TokenType::Delimiter(Delimiter::RBrace)
-        ) {
-            statements.push(self.parse_stmt()?);
+        while !matches!(self.peek().ty, TokenType::Delimiter(Delimiter::RBrace)) {
+            let location = self.peek().location;
+            statements.push(Statement {
+                stmt: self.parse_stmt()?,
+                location,
+            });
         }
 
         self.expect_delim(Delimiter::RBrace)?;
-        Ok(Stmt::Scope { statements })
+        Ok(Statement {
+            stmt: Stmt::Scope { statements },
+            location,
+        })
     }
 
     fn parse_while(&mut self) -> anyhow::Result<Stmt> {
@@ -305,10 +311,7 @@ impl Parser {
     fn parse_return(&mut self) -> anyhow::Result<Stmt> {
         self.advance(); // return
 
-        if matches!(
-            self.peek().token_type,
-            TokenType::Delimiter(Delimiter::Semicolon)
-        ) {
+        if matches!(self.peek().ty, TokenType::Delimiter(Delimiter::Semicolon)) {
             self.advance();
             Ok(Stmt::Return { value: None })
         } else {
@@ -319,7 +322,7 @@ impl Parser {
     }
 
     fn parse_type(&mut self) -> anyhow::Result<Type> {
-        match self.advance().token_type.clone() {
+        match self.advance().ty.clone() {
             TokenType::Identifier(name) => Ok(Type::Named(name)),
             t => anyhow::bail!("Expected type, found {:?}", t),
         }
@@ -328,15 +331,12 @@ impl Parser {
     fn parse_let(&mut self) -> anyhow::Result<Stmt> {
         self.advance(); // let
 
-        let name = match self.advance().token_type.clone() {
+        let name = match self.advance().ty.clone() {
             TokenType::Identifier(name) => name,
             t => anyhow::bail!("Expected identifier after let, found {:?}", t),
         };
 
-        let ty = if matches!(
-            self.peek().token_type,
-            TokenType::Delimiter(Delimiter::Colon)
-        ) {
+        let ty = if matches!(self.peek().ty, TokenType::Delimiter(Delimiter::Colon)) {
             self.advance();
             Some(self.parse_type()?)
         } else {
@@ -344,10 +344,7 @@ impl Parser {
         };
 
         anyhow::ensure!(
-            matches!(
-                self.peek().token_type,
-                TokenType::Operator(Operator::Assign)
-            ),
+            matches!(self.peek().ty, TokenType::Operator(Operator::Assign)),
             "Expected '=' in let declaration"
         );
         self.advance();
@@ -361,7 +358,7 @@ impl Parser {
     fn parse_param(&mut self) -> anyhow::Result<Param> {
         let ty = self.parse_type()?;
 
-        let name = match self.advance().token_type.clone() {
+        let name = match self.advance().ty.clone() {
             TokenType::Identifier(name) => name,
             t => anyhow::bail!("Expected parameter name, found {:?}", t),
         };
@@ -372,7 +369,7 @@ impl Parser {
     fn parse_function(&mut self) -> anyhow::Result<Stmt> {
         self.advance(); // func
 
-        let name = match self.advance().token_type.clone() {
+        let name = match self.advance().ty.clone() {
             TokenType::Identifier(name) => name,
             t => anyhow::bail!("Expected function name, found {:?}", t),
         };
@@ -380,16 +377,10 @@ impl Parser {
         self.expect_delim(Delimiter::LParen)?;
 
         let mut params = Vec::new();
-        if !matches!(
-            self.peek().token_type,
-            TokenType::Delimiter(Delimiter::RParen)
-        ) {
+        if !matches!(self.peek().ty, TokenType::Delimiter(Delimiter::RParen)) {
             loop {
                 params.push(self.parse_param()?);
-                if matches!(
-                    self.peek().token_type,
-                    TokenType::Delimiter(Delimiter::Comma)
-                ) {
+                if matches!(self.peek().ty, TokenType::Delimiter(Delimiter::Comma)) {
                     self.advance();
                 } else {
                     break;
@@ -399,10 +390,7 @@ impl Parser {
 
         self.expect_delim(Delimiter::RParen)?;
 
-        let return_type = if matches!(
-            self.peek().token_type,
-            TokenType::Delimiter(Delimiter::Arrow)
-        ) {
+        let ty = if matches!(self.peek().ty, TokenType::Delimiter(Delimiter::Arrow)) {
             self.advance();
             Some(self.parse_type()?)
         } else {
@@ -414,15 +402,16 @@ impl Parser {
         Ok(Stmt::Func {
             name,
             params,
-            return_type,
+            ty,
             body,
         })
     }
 
     pub fn parse(&mut self) -> anyhow::Result<()> {
         while !self.is_at_end() {
-            let statement = self.parse_stmt()?;
-            self.global_scope.push(statement);
+            let location = self.peek().location;
+            let stmt = self.parse_stmt()?;
+            self.global_scope.push(Statement { stmt, location });
         }
 
         Ok(())

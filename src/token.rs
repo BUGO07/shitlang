@@ -1,18 +1,15 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
-    pub token_type: TokenType,
+    pub ty: TokenType,
     pub location: Location,
 }
 
 impl Token {
-    pub fn new(token_type: TokenType, location: Location) -> Self {
-        Token {
-            token_type,
-            location,
-        }
+    pub fn new(ty: TokenType, location: Location) -> Self {
+        Token { ty, location }
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Location {
     pub line: usize,
     pub column: usize,
