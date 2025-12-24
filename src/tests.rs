@@ -4,7 +4,7 @@ macro_rules! impl_test {
     ($name:ident, $matcher:expr) => {
         #[test]
         fn $name() -> anyhow::Result<()> {
-            let ctrl = $crate::run_file(concat!("res/tests/", stringify!($name), ".shit"))?;
+            let ctrl = $crate::run_file(concat!("res/tests/", stringify!($name), ".lang"))?;
 
             match ctrl {
                 $crate::interpreter::ControlFlow::Return(x) => assert!($matcher(x)),

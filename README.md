@@ -1,4 +1,4 @@
-# Shitlang Compiler
+# My own language compiler consisting of a lexer, a recursive descent parser, a semantic analyzer and an interpreter, written in rust.
 
 ### The language is currently interpreted in rust, but I'm planning on using LLVM to generate machine code.
 
