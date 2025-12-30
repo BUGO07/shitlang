@@ -1,8 +1,10 @@
+#![allow(unused)]
+
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     parser::{Expr, Param, Statement, Stmt, Type},
-    token::{Literal, NumericType, Operator},
+    token::{Literal, Location, NumericType, Operator},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -736,6 +738,18 @@ impl Interpreter {
                     .define_function(name.clone(), params.clone(), body.clone())?;
                 Ok(ControlFlow::None)
             }
+            Stmt::Extern { name, params, .. } => {
+                self.env.define_function(
+                    name.clone(),
+                    params.clone(),
+                    Box::new(Statement {
+                        stmt: Stmt::Scope { statements: vec![] },
+                        location: Location::default(),
+                    }),
+                )?;
+                Ok(ControlFlow::None)
+            }
+
             Stmt::Expr(expr) => {
                 let (_, flow) = self.eval_expr(expr)?;
                 Ok(flow)
@@ -813,7 +827,7 @@ impl Interpreter {
                     Operator::LogicalAnd => left_val.and(&right_val),
                     Operator::LogicalOr => left_val.or(&right_val),
                     Operator::Ampersand => left_val.bitand(&right_val),
-                    Operator::VerticalBar => left_val.bitor(&right_val),
+                    Operator::Pipe => left_val.bitor(&right_val),
                     _ => anyhow::bail!("Unknown binary operator '{:?}'", operator),
                 }?;
                 Ok((result, ControlFlow::None))

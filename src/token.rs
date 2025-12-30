@@ -84,6 +84,7 @@ pub enum Keyword {
     For,
     Break,
     Continue,
+    Extern,
     // True,
     // False,
     Import,
@@ -107,7 +108,7 @@ pub enum Operator {
     LogicalOr,     // ||
     Exclem,        // !
     Ampersand,     // &
-    VerticalBar,   // |
+    Pipe,          // |
     Assign,        // =
     AddAssign,     // +=
     SubAssign,     // -=
@@ -129,7 +130,7 @@ impl Operator {
             }
             Operator::Equals | Operator::NotEquals => 5,
             Operator::Ampersand => 4,
-            Operator::VerticalBar => 3,
+            Operator::Pipe => 3,
             Operator::LogicalAnd => 2,
             Operator::LogicalOr => 1,
             _ => 0,
@@ -150,4 +151,5 @@ pub enum Delimiter {
     Comma,     // ,
     Dot,       // .
     Arrow,     // =>
+    Variadic,  // ..
 }

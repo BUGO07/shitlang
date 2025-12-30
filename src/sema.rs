@@ -134,6 +134,14 @@ impl SymbolTable {
                 self.build_stmt(body)?;
                 self.pop_scope();
             }
+            Stmt::Extern { name, ty, .. } => {
+                self.declare(Symbol {
+                    name: name.clone(),
+                    kind: SymbolKind::Function,
+                    ty: ty.clone(),
+                    location: statement.location,
+                })?;
+            }
             Stmt::Scope { statements } => {
                 self.push_scope();
                 for statement in statements {
@@ -450,6 +458,7 @@ impl SymbolTable {
             }),
             Stmt::Scope { statements } => self.block_type(statements),
             Stmt::Func { ty, .. } => Ok(ty.clone()),
+            Stmt::Extern { ty, .. } => Ok(ty.clone()),
             Stmt::While { body, .. } => {
                 self.stmt_type(body)?;
                 Ok(Type::Void)

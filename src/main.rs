@@ -1,10 +1,10 @@
+use inkwell::context::Context;
+
 use crate::{
-    interpreter::{ControlFlow, Interpreter},
-    lexer::Lexer,
-    parser::Parser,
-    sema::SymbolTable,
+    codegen::CodeGen, interpreter::ControlFlow, lexer::Lexer, parser::Parser, sema::SymbolTable,
 };
 
+mod codegen;
 mod interpreter;
 mod lexer;
 mod native_functions;
@@ -47,8 +47,15 @@ fn run_file(name: &str) -> anyhow::Result<ControlFlow> {
         .build(&parser.global_scope)
         .map_err(|e| anyhow::anyhow!("Semantic: {e}"))?;
 
-    let mut interpreter = Interpreter::new();
-    interpreter
-        .interpret(&parser.global_scope)
-        .map_err(|e| anyhow::anyhow!("Interpreter: {e}"))
+    let context = Context::create();
+    let mut codegen = CodeGen::new(&context);
+    codegen
+        .generate(&parser.global_scope)
+        .map_err(|e| anyhow::anyhow!("CodeGen: {e}"))?;
+
+    Ok(ControlFlow::None)
+    // let mut interpreter = Interpreter::new();
+    // interpreter
+    //     .interpret(&parser.global_scope)
+    //     .map_err(|e| anyhow::anyhow!("Interpreter: {e}"))
 }

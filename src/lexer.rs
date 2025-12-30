@@ -162,6 +162,16 @@ impl Lexer {
                         } else {
                             anyhow::bail!("Unexpected '=' character");
                         }
+                    } else if ch == '.'
+                        && let Some(&next) = chars.get(self.current_loc.index)
+                        && next == '.'
+                    {
+                        self.advance(1);
+                        self.tokens.push(Token::new(
+                            TokenType::Delimiter(Delimiter::Variadic),
+                            self.current_loc,
+                        ));
+                        continue;
                     }
 
                     let delimiter = match ch {
@@ -253,7 +263,7 @@ impl Lexer {
                                 } else {
                                     match ch {
                                         '&' => Operator::Ampersand,
-                                        '|' => Operator::VerticalBar,
+                                        '|' => Operator::Pipe,
                                         x => anyhow::bail!(
                                             "Unexpected '{next}' character after '{x}'"
                                         ),
@@ -277,7 +287,7 @@ impl Lexer {
                                 '>' => Operator::Greater,
                                 '<' => Operator::Less,
                                 '&' => Operator::Ampersand,
-                                '|' => Operator::VerticalBar,
+                                '|' => Operator::Pipe,
                                 _ => unreachable!(),
                             },
                         };
@@ -334,6 +344,7 @@ impl Lexer {
                         "for" => TokenType::Keyword(Keyword::For),
                         "break" => TokenType::Keyword(Keyword::Break),
                         "continue" => TokenType::Keyword(Keyword::Continue),
+                        "extern" => TokenType::Keyword(Keyword::Extern),
                         "import" => TokenType::Keyword(Keyword::Import),
                         "as" => TokenType::Keyword(Keyword::As),
                         "true" | "false" => TokenType::Literal(Literal::Boolean(ident)),

@@ -26,6 +26,11 @@ pub enum Stmt {
     Return {
         value: Option<Expr>,
     },
+    Extern {
+        name: String,
+        params: Vec<Param>,
+        ty: Type,
+    },
     Break,
     Continue,
 }
@@ -64,6 +69,7 @@ pub enum Expr {
     },
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Expression {
     pub expr: Expr,
@@ -76,6 +82,7 @@ pub enum Type {
     Numeric(NumericType),
     Pointer(Box<Type>),
     Boolean,
+    Variadic,
     Void,
 }
 
@@ -179,7 +186,7 @@ impl Parser {
                     Operator::DivAssign => Operator::Slash,
                     Operator::ModAssign => Operator::Percent,
                     Operator::BitAndAssign => Operator::Ampersand,
-                    Operator::BitOrAssign => Operator::VerticalBar,
+                    Operator::BitOrAssign => Operator::Pipe,
                     _ => unreachable!(),
                 };
 
@@ -335,6 +342,41 @@ impl Parser {
                 self.expect_delim(Delimiter::Semicolon)?;
                 Ok(Stmt::Continue)
             }
+            TokenType::Keyword(Keyword::Extern) => {
+                self.advance()?; // extern
+
+                let name = match self.advance()?.ty.clone() {
+                    TokenType::Identifier(name) => name,
+                    t => anyhow::bail!("Expected function name, found {:?}", t),
+                };
+
+                self.expect_delim(Delimiter::LParen)?;
+
+                let mut params = Vec::new();
+                if !matches!(self.peek()?.ty, TokenType::Delimiter(Delimiter::RParen)) {
+                    loop {
+                        params.push(self.parse_param()?);
+                        if matches!(self.peek()?.ty, TokenType::Delimiter(Delimiter::Comma)) {
+                            self.advance()?;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                self.expect_delim(Delimiter::RParen)?;
+
+                let ty = if matches!(self.peek()?.ty, TokenType::Delimiter(Delimiter::Arrow)) {
+                    self.advance()?;
+                    self.parse_type()?
+                } else {
+                    Type::Void
+                };
+
+                self.expect_delim(Delimiter::Semicolon)?;
+
+                Ok(Stmt::Extern { name, params, ty })
+            }
             _ => self.parse_expr_stmt(),
         }
     }
@@ -400,6 +442,7 @@ impl Parser {
                 "bool" => Type::Boolean,
                 _ => Type::Named(name),
             }),
+            TokenType::Delimiter(Delimiter::Variadic) => Ok(Type::Variadic),
             t => anyhow::bail!("Expected type, found {:?}", t),
         }
     }

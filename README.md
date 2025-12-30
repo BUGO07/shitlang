@@ -1,6 +1,6 @@
-# My own language compiler consisting of a lexer, a recursive descent parser, a semantic analyzer and an interpreter, written in rust.
+# My own language compiler consisting of a lexer, a recursive descent parser, a semantic analyzer, and an interpreter as well as a codegen, written in rust.
 
-### The language is currently interpreted in rust, but I'm planning on using LLVM to generate machine code.
+### The language is currently can be compiled to machine code with llvm or interpreted in rust.
 
 ### Running:
 `cargo run <source_file>`
