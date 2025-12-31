@@ -1,12 +1,11 @@
-use std::{collections::HashMap, path::Path, process::Command};
+use std::collections::HashMap;
 
 use inkwell::{
-    AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel,
+    AddressSpace, FloatPredicate, IntPredicate,
     basic_block::BasicBlock,
     builder::Builder,
     context::Context,
     module::Module,
-    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
     types::BasicTypeEnum,
     values::{BasicValueEnum, FunctionValue, InstructionOpcode, PointerValue},
 };
@@ -80,7 +79,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn compile_stmt(&mut self, stmt: &Stmt, function: FunctionValue<'ctx>) -> anyhow::Result<()> {
         match stmt {
             Stmt::Expr(expr) => {
-                self.compile_expr(expr, function)?;
+                self.compile_expr(expr)?;
                 Ok(())
             }
             Stmt::Scope { statements } => {
@@ -91,7 +90,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Stmt::Return { value } => {
                 if let Some(expr) = value {
-                    let ret_val = self.compile_expr(expr, function)?.unwrap();
+                    let ret_val = self.compile_expr(expr)?.unwrap();
                     self.builder.build_return(Some(&ret_val))?;
                 } else {
                     self.builder.build_return(None)?;
@@ -344,7 +343,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(())
             }
             Stmt::Let { name, value, ty } => {
-                let init_val = self.compile_expr(value, function)?.unwrap();
+                let init_val = self.compile_expr(value)?.unwrap();
                 let val_type = init_val.get_type();
                 let decl_ty = ty.as_ref().map(|x| self.get_basic_type(x)).transpose()?;
                 if let Some(decl_ty) = decl_ty
@@ -375,10 +374,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                 self.switch_block(while_before);
 
-                let compiled_condition = self
-                    .compile_expr(condition, function)?
-                    .unwrap()
-                    .into_int_value();
+                let compiled_condition = self.compile_expr(condition)?.unwrap().into_int_value();
 
                 self.builder.build_conditional_branch(
                     compiled_condition,
@@ -406,14 +402,50 @@ impl<'ctx> CodeGen<'ctx> {
 
                 Ok(())
             }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let cond_val = self.compile_expr(condition)?.unwrap();
+
+                let then_block = self.context.append_basic_block(function, "then");
+                let else_block = self.context.append_basic_block(function, "else");
+                let merge_block = self.context.append_basic_block(function, "ifcont");
+
+                self.builder.build_conditional_branch(
+                    cond_val.into_int_value(),
+                    then_block,
+                    else_block,
+                )?;
+
+                self.switch_block(then_block);
+                for statement in then_branch {
+                    self.compile_stmt(&statement.stmt, function)?;
+                }
+                if self.current_block.get_terminator().is_none() {
+                    self.builder.build_unconditional_branch(merge_block)?;
+                }
+
+                self.switch_block(else_block);
+                if let Some(else_branch) = else_branch {
+                    for statement in else_branch {
+                        self.compile_stmt(&statement.stmt, function)?;
+                    }
+                }
+                if self.current_block.get_terminator().is_none() {
+                    self.builder.build_unconditional_branch(merge_block)?;
+                }
+
+                self.switch_block(merge_block);
+
+                Ok(())
+            }
+            Stmt::Semicolon => Ok(()),
         }
     }
 
-    fn compile_expr(
-        &mut self,
-        expr: &Expr,
-        function: FunctionValue<'ctx>,
-    ) -> anyhow::Result<Option<BasicValueEnum<'ctx>>> {
+    fn compile_expr(&mut self, expr: &Expr) -> anyhow::Result<Option<BasicValueEnum<'ctx>>> {
         match expr {
             Expr::Literal(lit) => match lit {
                 Literal::Numeric(lit) => {
@@ -499,7 +531,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Literal::String(s) => {
                     let str_const = self
                         .builder
-                        .build_global_string_ptr(&s.replace("\\n", "\n"), "str")?;
+                        .build_global_string_ptr(&unescaper::unescape(s)?, "str")?;
                     Ok(Some(BasicValueEnum::PointerValue(
                         str_const.as_pointer_value(),
                     )))
@@ -525,8 +557,8 @@ impl<'ctx> CodeGen<'ctx> {
                 operator,
                 right,
             } => {
-                let left_val = self.compile_expr(left, function)?;
-                let right_val = self.compile_expr(right, function)?;
+                let left_val = self.compile_expr(left)?;
+                let right_val = self.compile_expr(right)?;
                 match (left_val, right_val, operator) {
                     (
                         Some(BasicValueEnum::IntValue(lhs)),
@@ -784,7 +816,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(Some(BasicValueEnum::PointerValue(*ptr)));
                 }
                 if matches!(operator, Operator::Asterisk) {
-                    let operand_val = self.compile_expr(operand, function)?;
+                    let operand_val = self.compile_expr(operand)?;
                     let ptr = match operand_val {
                         Some(BasicValueEnum::PointerValue(p)) => p,
                         _ => anyhow::bail!("Can only dereference pointer types"),
@@ -800,7 +832,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let loaded_val = self.builder.build_load(*ty, ptr, "tmpload")?;
                     return Ok(Some(loaded_val));
                 }
-                let operand = self.compile_expr(operand, function)?;
+                let operand = self.compile_expr(operand)?;
                 match (operand, operator) {
                     (Some(BasicValueEnum::IntValue(val)), Operator::Minus) => Ok(Some(
                         BasicValueEnum::IntValue(self.builder.build_int_neg(val, "tmpneg")?),
@@ -818,7 +850,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let func = self.module.get_function(name);
                 let args = arguments
                     .iter()
-                    .map(|x| self.compile_expr(x, function))
+                    .map(|x| self.compile_expr(x))
                     .collect::<anyhow::Result<Vec<_>>>()?;
                 let func = func.ok_or_else(|| anyhow::anyhow!("Function not found: {}", name))?;
                 let args: Vec<_> = args.iter().map(|arg| arg.unwrap().into()).collect();
@@ -838,7 +870,7 @@ impl<'ctx> CodeGen<'ctx> {
                         operator: Operator::Asterisk,
                         operand,
                     } => {
-                        let operand_val = self.compile_expr(operand, function)?;
+                        let operand_val = self.compile_expr(operand)?;
                         match operand_val {
                             Some(BasicValueEnum::PointerValue(p)) => p,
                             _ => anyhow::bail!("Can only dereference pointer types"),
@@ -847,53 +879,14 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => anyhow::bail!("Invalid assignment target"),
                 };
 
-                let val = self.compile_expr(value, function)?.unwrap();
+                let val = self.compile_expr(value)?.unwrap();
                 self.builder.build_store(ptr, val)?;
                 Ok(None)
-            }
-            Expr::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                let cond_val = self.compile_expr(condition, function)?.unwrap();
-
-                let then_block = self.context.append_basic_block(function, "then");
-                let else_block = self.context.append_basic_block(function, "else");
-                let merge_block = self.context.append_basic_block(function, "ifcont");
-
-                self.builder.build_conditional_branch(
-                    cond_val.into_int_value(),
-                    then_block,
-                    else_block,
-                )?;
-
-                self.switch_block(then_block);
-                for statement in then_branch {
-                    self.compile_stmt(&statement.stmt, function)?;
-                }
-                if self.current_block.get_terminator().is_none() {
-                    self.builder.build_unconditional_branch(merge_block)?;
-                }
-
-                self.switch_block(else_block);
-                if let Some(else_branch) = else_branch {
-                    for statement in else_branch {
-                        self.compile_stmt(&statement.stmt, function)?;
-                    }
-                }
-                if self.current_block.get_terminator().is_none() {
-                    self.builder.build_unconditional_branch(merge_block)?;
-                }
-
-                self.switch_block(merge_block);
-
-                Ok(None) // TODO: make this return a value (like rust)
             }
         }
     }
 
-    pub fn generate(&mut self, global_scope: &[Statement]) -> anyhow::Result<()> {
+    pub fn generate(&mut self, global_scope: &[Statement]) -> anyhow::Result<Module<'ctx>> {
         self.builder.position_at_end(self.current_block);
 
         for statement in global_scope {
@@ -905,36 +898,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.module.verify().map_err(|e| anyhow::anyhow!("{e}"))?;
 
-        self.module.print_to_file("build/output.ll").unwrap();
-
-        Target::initialize_native(&InitializationConfig::default()).unwrap();
-        let triple = TargetMachine::get_default_triple();
-        let target = Target::from_triple(&triple).unwrap();
-        let cpu = "generic";
-        let features = "";
-
-        let target_machine = target
-            .create_target_machine(
-                &triple,
-                cpu,
-                features,
-                OptimizationLevel::Default,
-                RelocMode::PIC,
-                CodeModel::Default,
-            )
-            .unwrap();
-
-        target_machine
-            .write_to_file(&self.module, FileType::Object, Path::new("build/output.o"))
-            .unwrap();
-
-        Command::new("clang")
-            .args(["build/output.o", "-o", "build/output"])
-            .status()
-            .map_err(|e| anyhow::anyhow!("Failed to execute clang: {}", e))?;
-
-        Command::new("build/output").status()?;
-
-        Ok(())
+        Ok(self.module.clone())
     }
 }

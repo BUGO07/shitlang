@@ -31,8 +31,14 @@ pub enum Stmt {
         params: Vec<Param>,
         ty: Type,
     },
+    If {
+        condition: Box<Expr>,
+        then_branch: Vec<Statement>,
+        else_branch: Option<Vec<Statement>>,
+    },
     Break,
     Continue,
+    Semicolon,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,11 +67,6 @@ pub enum Expr {
     Assignment {
         target: Box<Expr>,
         value: Box<Expr>,
-    },
-    If {
-        condition: Box<Expr>,
-        then_branch: Vec<Statement>,
-        else_branch: Option<Vec<Statement>>,
     },
 }
 
@@ -136,10 +137,7 @@ impl Parser {
         let current = self.peek()?;
         anyhow::ensure!(
             matches!(current.ty, TokenType::Delimiter(d) if d == expected),
-            "Expected delimiter {:?} at {:?}, found {:?}",
-            expected,
-            current.location,
-            current.ty
+            "Expected delimiter {expected:?}",
         );
 
         self.advance()
@@ -269,36 +267,6 @@ impl Parser {
                 Ok(expr)
             }
 
-            TokenType::Keyword(Keyword::If) => {
-                let condition = self.parse_expr()?;
-                let then_branch = match self.parse_scope()? {
-                    Statement {
-                        stmt: Stmt::Scope { statements },
-                        ..
-                    } => statements,
-                    _ => unreachable!(),
-                };
-
-                let else_branch = if matches!(self.peek()?.ty, TokenType::Keyword(Keyword::Else)) {
-                    self.advance()?;
-                    match self.parse_scope()? {
-                        Statement {
-                            stmt: Stmt::Scope { statements },
-                            ..
-                        } => Some(statements),
-                        _ => unreachable!(),
-                    }
-                } else {
-                    None
-                };
-
-                Ok(Expr::If {
-                    condition: Box::new(condition),
-                    then_branch,
-                    else_branch,
-                })
-            }
-
             t => anyhow::bail!("Unexpected token in expression: {:?}", t),
         }
     }
@@ -327,6 +295,10 @@ impl Parser {
 
     fn parse_stmt(&mut self) -> anyhow::Result<Stmt> {
         match self.peek()?.ty {
+            TokenType::Delimiter(Delimiter::Semicolon) => {
+                self.advance()?;
+                Ok(Stmt::Semicolon)
+            }
             TokenType::Keyword(Keyword::Let) => self.parse_let(),
             TokenType::Keyword(Keyword::Func) => self.parse_function(),
             TokenType::Keyword(Keyword::While) => self.parse_while(),
@@ -376,6 +348,37 @@ impl Parser {
                 self.expect_delim(Delimiter::Semicolon)?;
 
                 Ok(Stmt::Extern { name, params, ty })
+            }
+
+            TokenType::Keyword(Keyword::If) => {
+                self.advance()?; // if
+                let condition = self.parse_expr()?;
+                let then_branch = match self.parse_scope()? {
+                    Statement {
+                        stmt: Stmt::Scope { statements },
+                        ..
+                    } => statements,
+                    _ => unreachable!(),
+                };
+
+                let else_branch = if matches!(self.peek()?.ty, TokenType::Keyword(Keyword::Else)) {
+                    self.advance()?;
+                    match self.parse_scope()? {
+                        Statement {
+                            stmt: Stmt::Scope { statements },
+                            ..
+                        } => Some(statements),
+                        _ => unreachable!(),
+                    }
+                } else {
+                    None
+                };
+
+                Ok(Stmt::If {
+                    condition: Box::new(condition),
+                    then_branch,
+                    else_branch,
+                })
             }
             _ => self.parse_expr_stmt(),
         }

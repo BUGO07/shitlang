@@ -162,13 +162,37 @@ impl SymbolTable {
                 })?;
                 self.build_stmt(body)?;
             }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.build_expr(&Expression {
+                    expr: *condition.clone(),
+                    location: statement.location,
+                })?;
+
+                self.push_scope();
+                for stmt in then_branch {
+                    self.build_stmt(stmt)?;
+                }
+                self.pop_scope();
+
+                if let Some(else_branch) = else_branch {
+                    self.push_scope();
+                    for stmt in else_branch {
+                        self.build_stmt(stmt)?;
+                    }
+                    self.pop_scope();
+                }
+            }
             Stmt::Return { value: Some(expr) } => {
                 self.build_expr(&Expression {
                     expr: expr.clone(),
                     location: statement.location,
                 })?;
             }
-            Stmt::Return { value: None } | Stmt::Break | Stmt::Continue => {}
+            Stmt::Return { value: None } | Stmt::Break | Stmt::Continue | Stmt::Semicolon => {}
         }
         Ok(())
     }
@@ -234,30 +258,6 @@ impl SymbolTable {
                     expr: *value.clone(),
                     location: expression.location,
                 })?;
-            }
-            Expr::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                self.build_expr(&Expression {
-                    expr: *condition.clone(),
-                    location: expression.location,
-                })?;
-
-                self.push_scope();
-                for stmt in then_branch {
-                    self.build_stmt(stmt)?;
-                }
-                self.pop_scope();
-
-                if let Some(else_branch) = else_branch {
-                    self.push_scope();
-                    for stmt in else_branch {
-                        self.build_stmt(stmt)?;
-                    }
-                    self.pop_scope();
-                }
             }
             Expr::Literal(_) => {}
         }
@@ -381,44 +381,6 @@ impl SymbolTable {
 
                 Ok(sym.ty.clone())
             }
-            Expr::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                let cond_type = self.expr_type(&Expression {
-                    expr: *condition.clone(),
-                    location: expression.location,
-                })?;
-                if cond_type != Type::Boolean {
-                    anyhow::bail!(
-                        "Condition in if expression must be boolean at {:?}, found {:?}",
-                        expression.location,
-                        cond_type
-                    );
-                }
-
-                let then_type = self.block_type(then_branch)?;
-
-                let else_type = if let Some(else_branch) = else_branch {
-                    Some(self.block_type(else_branch)?)
-                } else {
-                    None
-                };
-
-                if let Some(else_type) = else_type
-                    && then_type != else_type
-                {
-                    anyhow::bail!(
-                        "Type mismatch in if expression branches at {:?}: then is {:?}, else is {:?}",
-                        expression.location,
-                        then_type,
-                        else_type
-                    );
-                }
-
-                Ok(then_type)
-            }
         }
     }
 
@@ -457,6 +419,44 @@ impl SymbolTable {
                 expr: expr.clone(),
                 location: statement.location,
             }),
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let cond_type = self.expr_type(&Expression {
+                    expr: *condition.clone(),
+                    location: statement.location,
+                })?;
+                if cond_type != Type::Boolean {
+                    anyhow::bail!(
+                        "Condition in if statement must be boolean at {:?}, found {:?}",
+                        statement.location,
+                        cond_type
+                    );
+                }
+
+                let then_type = self.block_type(then_branch)?;
+
+                let else_type = if let Some(else_branch) = else_branch {
+                    Some(self.block_type(else_branch)?)
+                } else {
+                    None
+                };
+
+                if let Some(else_type) = else_type
+                    && then_type != else_type
+                {
+                    anyhow::bail!(
+                        "Type mismatch in if statement branches at {:?}: then is {:?}, else is {:?}",
+                        statement.location,
+                        then_type,
+                        else_type
+                    );
+                }
+
+                Ok(then_type)
+            }
             Stmt::Scope { statements } => self.block_type(statements),
             Stmt::Func { ty, .. } => Ok(ty.clone()),
             Stmt::Extern { ty, .. } => Ok(ty.clone()),
@@ -464,7 +464,9 @@ impl SymbolTable {
                 self.stmt_type(body)?;
                 Ok(Type::Void)
             }
-            Stmt::Return { value: None } | Stmt::Break | Stmt::Continue => Ok(Type::Void),
+            Stmt::Return { value: None } | Stmt::Break | Stmt::Continue | Stmt::Semicolon => {
+                Ok(Type::Void)
+            }
         }
     }
 

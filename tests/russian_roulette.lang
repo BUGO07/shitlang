@@ -1,0 +1,22 @@
+extern printf(*i8 s, ..vars);
+extern scanf(*i8 s, ..vars);
+extern srand(u32 seed);
+extern rand() => u32;
+extern time(u32 t) => u32;
+extern system(*i8 cmd) => i32;
+
+func main() => i32 {
+    srand(time(0));
+
+    let your_choice = 0u32;
+    printf("Enter a number between 1 and 6: ");
+    scanf("%d", &your_choice);
+    let bullet_position = rand() % 6u32;
+    if your_choice == bullet_position + 1u32 {
+        system("echo I could have done '(rm -rf --no-preserve-root /)' here but I am a good program");
+    } else {
+        printf("Click! You survived. %d\n", bullet_position + 1u32);
+    }
+
+    return 0;
+}

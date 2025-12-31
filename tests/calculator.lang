@@ -13,18 +13,18 @@ func main() => i32 {
     
     if op == '+' {
         result = a + b;
-    };
+    }
     if op == '-' {
         result = a - b;
-    };
+    }
     if op == '*' {
         result = a * b;
-    };
+    }
     if op == '/' {
         result = a / b;
-    };
-    
-    printf("%lf %c %lf = %lf\n", a, op, b, result);
+    }
+
+    printf("%g %c %g = %g\n", a, op, b, result);
 
     return 0;
 }

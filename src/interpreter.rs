@@ -785,6 +785,44 @@ impl Interpreter {
                 }
                 Ok(ControlFlow::None)
             }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let (cond, _) = self.eval_expr(condition)?;
+                if matches!(cond, InterpretValue::Boolean(true)) {
+                    self.env.push_scope();
+                    let mut result = ControlFlow::None;
+                    for stmt in then_branch {
+                        result = self.exec_stmt(stmt)?;
+                        match result {
+                            ControlFlow::Return(_) | ControlFlow::Break | ControlFlow::Continue => {
+                                break;
+                            }
+                            ControlFlow::None => {}
+                        }
+                    }
+                    self.env.pop_scope();
+                    Ok(result)
+                } else if let Some(else_branch) = else_branch {
+                    self.env.push_scope();
+                    let mut result = ControlFlow::None;
+                    for stmt in else_branch {
+                        result = self.exec_stmt(stmt)?;
+                        match result {
+                            ControlFlow::Return(_) | ControlFlow::Break | ControlFlow::Continue => {
+                                break;
+                            }
+                            ControlFlow::None => {}
+                        }
+                    }
+                    self.env.pop_scope();
+                    Ok(result)
+                } else {
+                    Ok(ControlFlow::None)
+                }
+            }
             Stmt::Return { value } => {
                 let val = if let Some(expr) = value {
                     let (v, _) = self.eval_expr(expr)?;
@@ -796,6 +834,7 @@ impl Interpreter {
             }
             Stmt::Break => Ok(ControlFlow::Break),
             Stmt::Continue => Ok(ControlFlow::Continue),
+            Stmt::Semicolon => Ok(ControlFlow::None),
         }
     }
 
@@ -961,44 +1000,6 @@ impl Interpreter {
                 };
                 self.env.update(target, val)?;
                 Ok((InterpretValue::Void, ControlFlow::None))
-            }
-            Expr::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                let (cond, _) = self.eval_expr(condition)?;
-                if matches!(cond, InterpretValue::Boolean(true)) {
-                    self.env.push_scope();
-                    let mut result = ControlFlow::None;
-                    for stmt in then_branch {
-                        result = self.exec_stmt(stmt)?;
-                        match result {
-                            ControlFlow::Return(_) | ControlFlow::Break | ControlFlow::Continue => {
-                                break;
-                            }
-                            ControlFlow::None => {}
-                        }
-                    }
-                    self.env.pop_scope();
-                    Ok((InterpretValue::Void, result))
-                } else if let Some(else_branch) = else_branch {
-                    self.env.push_scope();
-                    let mut result = ControlFlow::None;
-                    for stmt in else_branch {
-                        result = self.exec_stmt(stmt)?;
-                        match result {
-                            ControlFlow::Return(_) | ControlFlow::Break | ControlFlow::Continue => {
-                                break;
-                            }
-                            ControlFlow::None => {}
-                        }
-                    }
-                    self.env.pop_scope();
-                    Ok((InterpretValue::Void, result))
-                } else {
-                    Ok((InterpretValue::Void, ControlFlow::None))
-                }
             }
             Expr::FunctionCall { name, arguments } => self.call_func(name, arguments),
         }

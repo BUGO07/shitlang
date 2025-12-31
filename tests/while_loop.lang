@@ -2,11 +2,11 @@ extern printf(*i8 s, ..vars);
 
 func main() => i32 {
     let i = 0;
-    while i < 100 {
+    while i < 10 {
         i += 1;
         if i % 2 != 0 {
             printf("i = %d\n", i); // TODO: make continue work
-        };
+        }
     }
 
     return 0;
