@@ -6,19 +6,19 @@ pub fn print(args: Vec<InterpretValue>) -> anyhow::Result<InterpretValue> {
             println!();
         }
         1 => {
-            println!("{}", args[0].as_string());
+            println!("{}", args[0]);
         }
         _ => match args[0] {
             InterpretValue::String(ref first) => {
                 let mut output = first.clone();
                 for arg in &args[1..] {
-                    output = output.replacen("{}", &arg.as_string(), 1);
+                    output = output.replacen("{}", &arg.to_string(), 1);
                 }
                 println!("{}", output);
             }
             _ => {
                 for arg in args {
-                    print!("{} ", arg.as_string());
+                    print!("{} ", arg);
                 }
                 println!();
             }

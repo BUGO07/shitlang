@@ -91,17 +91,11 @@ impl SymbolTable {
     fn build_stmt(&mut self, statement: &Statement) -> anyhow::Result<()> {
         match &statement.stmt {
             Stmt::Let { name, ty, value } => {
-                self.build_expr(&Expression {
-                    expr: value.clone(),
-                    location: statement.location,
-                })?;
+                self.build_expr(value, statement.location)?;
                 let ty = if let Some(ty) = ty {
                     ty.clone()
                 } else {
-                    self.expr_type(&Expression {
-                        expr: value.clone(),
-                        location: statement.location,
-                    })?
+                    self.expr_type(value, statement.location)?
                 };
                 self.declare(Symbol {
                     name: name.clone(),
@@ -150,16 +144,10 @@ impl SymbolTable {
                 self.pop_scope();
             }
             Stmt::Expr(expr) => {
-                self.build_expr(&Expression {
-                    expr: expr.clone(),
-                    location: statement.location,
-                })?;
+                self.build_expr(expr, statement.location)?;
             }
             Stmt::While { condition, body } => {
-                self.build_expr(&Expression {
-                    expr: condition.clone(),
-                    location: statement.location,
-                })?;
+                self.build_expr(condition, statement.location)?;
                 self.build_stmt(body)?;
             }
             Stmt::If {
@@ -167,10 +155,7 @@ impl SymbolTable {
                 then_branch,
                 else_branch,
             } => {
-                self.build_expr(&Expression {
-                    expr: *condition.clone(),
-                    location: statement.location,
-                })?;
+                self.build_expr(condition, statement.location)?;
 
                 self.push_scope();
                 for stmt in then_branch {
@@ -187,88 +172,65 @@ impl SymbolTable {
                 }
             }
             Stmt::Return { value: Some(expr) } => {
-                self.build_expr(&Expression {
-                    expr: expr.clone(),
-                    location: statement.location,
-                })?;
+                self.build_expr(expr, statement.location)?;
             }
             Stmt::Return { value: None } | Stmt::Break | Stmt::Continue | Stmt::Semicolon => {}
         }
         Ok(())
     }
 
-    fn build_expr(&mut self, expression: &Expression) -> anyhow::Result<()> {
-        match &expression.expr {
+    fn build_expr(&mut self, expr: &Expr, location: Location) -> anyhow::Result<()> {
+        match expr {
             Expr::Variable(name) => {
                 anyhow::ensure!(
                     self.lookup(name).is_some(),
                     "Use of undeclared variable '{}' at {:?}",
                     name,
-                    expression.location
+                    location
                 );
             }
             Expr::Binary { left, right, .. } => {
-                let lhs = &Expression {
-                    expr: *left.clone(),
-                    location: expression.location,
-                };
-                let rhs = &Expression {
-                    expr: *right.clone(),
-                    location: expression.location,
-                };
-                let lhs_type = self.expr_type(lhs)?;
-                let rhs_type = self.expr_type(rhs)?;
+                let lhs_type = self.expr_type(left, location)?;
+                let rhs_type = self.expr_type(right, location)?;
                 if lhs_type != rhs_type {
                     anyhow::bail!(
                         "Type mismatch in binary expression at {:?}: left is {:?}, right is {:?}",
-                        expression.location,
+                        location,
                         lhs_type,
                         rhs_type
                     );
                 }
-                self.build_expr(lhs)?;
-                self.build_expr(rhs)?;
+                self.build_expr(left, location)?;
+                self.build_expr(right, location)?;
             }
             Expr::Unary { operand, .. } => {
-                self.build_expr(&Expression {
-                    expr: *operand.clone(),
-                    location: expression.location,
-                })?;
+                self.build_expr(operand, location)?;
             }
             Expr::FunctionCall { name, arguments } => {
                 anyhow::ensure!(
                     self.lookup(name).is_some(),
                     "Use of undeclared function '{}' at {:?}",
                     name,
-                    expression.location
+                    location
                 );
                 for arg in arguments {
-                    self.build_expr(&Expression {
-                        expr: arg.clone(),
-                        location: expression.location,
-                    })?;
+                    self.build_expr(arg, location)?;
                 }
             }
             Expr::Assignment { target, value } => {
-                self.build_expr(&Expression {
-                    expr: *target.clone(),
-                    location: expression.location,
-                })?;
-                self.build_expr(&Expression {
-                    expr: *value.clone(),
-                    location: expression.location,
-                })?;
+                self.build_expr(target, location)?;
+                self.build_expr(value, location)?;
             }
             Expr::Literal(_) => {}
         }
         Ok(())
     }
 
-    fn expr_type(&self, expression: &Expression) -> anyhow::Result<Type> {
-        match &expression.expr {
+    fn expr_type(&self, expr: &Expr, location: Location) -> anyhow::Result<Type> {
+        match expr {
             Expr::Literal(lit) => match lit {
                 Literal::Numeric(literal) => Ok(Type::Numeric(
-                    NumericType::from_literal(literal)?.unwrap_or(if literal.contains(".") {
+                    NumericType::from_literal(literal)?.unwrap_or(if literal.contains('.') {
                         NumericType::F64
                     } else {
                         NumericType::I32
@@ -283,7 +245,7 @@ impl SymbolTable {
                     anyhow::anyhow!(
                         "Use of undeclared variable '{}' at {:?}",
                         name,
-                        expression.location
+                        location
                     )
                 })?;
 
@@ -294,19 +256,13 @@ impl SymbolTable {
                 right,
                 operator,
             } => {
-                let left_type = self.expr_type(&Expression {
-                    expr: *left.clone(),
-                    location: expression.location,
-                })?;
-                let right_type = self.expr_type(&Expression {
-                    expr: *right.clone(),
-                    location: expression.location,
-                })?;
+                let left_type = self.expr_type(left, location)?;
+                let right_type = self.expr_type(right, location)?;
 
                 if left_type != right_type {
                     anyhow::bail!(
                         "Type mismatch in binary expression at {:?}: left is {:?}, right is {:?}",
-                        expression.location,
+                        location,
                         left_type,
                         right_type
                     );
@@ -317,7 +273,7 @@ impl SymbolTable {
                         if left_type != Type::Boolean {
                             anyhow::bail!(
                                 "Logical operators require boolean operands at {:?}, found {:?}",
-                                expression.location,
+                                location,
                                 left_type
                             );
                         }
@@ -333,36 +289,27 @@ impl SymbolTable {
                 }
             }
             Expr::Unary { operand, operator } => {
-                let op_type = self.expr_type(&Expression {
-                    expr: *operand.clone(),
-                    location: expression.location,
-                })?;
+                let op_type = self.expr_type(operand, location)?;
                 Ok(match operator {
                     Operator::Ampersand => Type::Pointer(Box::new(op_type)),
                     Operator::Asterisk => match op_type {
                         Type::Pointer(x) => *x,
                         _ => anyhow::bail!(
                             "Dereferencing a non-pointer type at {:?}",
-                            expression.location
+                            location
                         ),
                     },
                     _ => op_type,
                 })
             }
             Expr::Assignment { target, value } => {
-                let target_type = self.expr_type(&Expression {
-                    expr: *target.clone(),
-                    location: expression.location,
-                })?;
-                let value_type = self.expr_type(&Expression {
-                    expr: *value.clone(),
-                    location: expression.location,
-                })?;
+                let target_type = self.expr_type(target, location)?;
+                let value_type = self.expr_type(value, location)?;
 
                 if target_type != value_type {
                     anyhow::bail!(
                         "Type mismatch in assignment at {:?}: target is {:?}, value is {:?}",
-                        expression.location,
+                        location,
                         target_type,
                         value_type
                     );
@@ -375,7 +322,7 @@ impl SymbolTable {
                     anyhow::anyhow!(
                         "Call to undeclared function '{}' at {:?}",
                         name,
-                        expression.location
+                        location
                     )
                 })?;
 
@@ -395,10 +342,7 @@ impl SymbolTable {
     fn stmt_type(&self, statement: &Statement) -> anyhow::Result<Type> {
         match &statement.stmt {
             Stmt::Let { ty, value, .. } => {
-                let expr_type = self.expr_type(&Expression {
-                    expr: value.clone(),
-                    location: statement.location,
-                })?;
+                let expr_type = self.expr_type(value, statement.location)?;
                 if let Some(ty) = ty
                     && *ty != expr_type
                 {
@@ -411,23 +355,14 @@ impl SymbolTable {
                 }
                 Ok(Type::Void)
             }
-            Stmt::Expr(expr) => self.expr_type(&Expression {
-                expr: expr.clone(),
-                location: statement.location,
-            }),
-            Stmt::Return { value: Some(expr) } => self.expr_type(&Expression {
-                expr: expr.clone(),
-                location: statement.location,
-            }),
+            Stmt::Expr(expr) => self.expr_type(expr, statement.location),
+            Stmt::Return { value: Some(expr) } => self.expr_type(expr, statement.location),
             Stmt::If {
                 condition,
                 then_branch,
                 else_branch,
             } => {
-                let cond_type = self.expr_type(&Expression {
-                    expr: *condition.clone(),
-                    location: statement.location,
-                })?;
+                let cond_type = self.expr_type(condition, statement.location)?;
                 if cond_type != Type::Boolean {
                     anyhow::bail!(
                         "Condition in if statement must be boolean at {:?}, found {:?}",

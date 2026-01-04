@@ -1,6 +1,4 @@
-#![allow(unused)]
-
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use crate::{
     parser::{Expr, Param, Statement, Stmt, Type},
@@ -27,19 +25,47 @@ pub enum InterpretValue {
     Void,
 }
 
+impl fmt::Display for InterpretValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InterpretValue::I8(v) => write!(f, "{}", v),
+            InterpretValue::I16(v) => write!(f, "{}", v),
+            InterpretValue::I32(v) => write!(f, "{}", v),
+            InterpretValue::I64(v) => write!(f, "{}", v),
+            InterpretValue::ISize(v) => write!(f, "{}", v),
+            InterpretValue::U8(v) => write!(f, "{}", v),
+            InterpretValue::U16(v) => write!(f, "{}", v),
+            InterpretValue::U32(v) => write!(f, "{}", v),
+            InterpretValue::U64(v) => write!(f, "{}", v),
+            InterpretValue::USize(v) => write!(f, "{}", v),
+            InterpretValue::F32(v) => write!(f, "{}", v),
+            InterpretValue::F64(v) => write!(f, "{}", v),
+            InterpretValue::Boolean(v) => write!(f, "{}", v),
+            InterpretValue::String(v) => write!(f, "{}", v),
+            InterpretValue::Pointer(v, t) => write!(f, "Pointer({:?}): {:#x}", t, v),
+            InterpretValue::Void => write!(f, "void"),
+        }
+    }
+}
+
 impl InterpretValue {
     pub fn from_literal(lit: Literal) -> anyhow::Result<Self> {
         match lit {
             Literal::Numeric(lit) => {
-                let value = lit.split("_").next().unwrap();
+                // Split at underscore using find instead of split to avoid allocation
+                let value = if let Some(pos) = lit.find('_') {
+                    &lit[..pos]
+                } else {
+                    &lit
+                };
                 let Some(num_type) = NumericType::from_literal(&lit)? else {
-                    return Ok(if value.contains(".") {
+                    return Ok(if value.contains('.') {
                         InterpretValue::F64(value.parse()?)
                     } else {
                         InterpretValue::I32(value.parse()?)
                     });
                 };
-                if value.starts_with("-")
+                if value.starts_with('-')
                     && matches!(
                         num_type,
                         NumericType::U8
@@ -516,24 +542,7 @@ impl InterpretValue {
     }
 
     pub fn as_string(&self) -> String {
-        match self {
-            InterpretValue::I8(v) => v.to_string(),
-            InterpretValue::I16(v) => v.to_string(),
-            InterpretValue::I32(v) => v.to_string(),
-            InterpretValue::I64(v) => v.to_string(),
-            InterpretValue::ISize(v) => v.to_string(),
-            InterpretValue::U8(v) => v.to_string(),
-            InterpretValue::U16(v) => v.to_string(),
-            InterpretValue::U32(v) => v.to_string(),
-            InterpretValue::U64(v) => v.to_string(),
-            InterpretValue::USize(v) => v.to_string(),
-            InterpretValue::F32(v) => v.to_string(),
-            InterpretValue::F64(v) => v.to_string(),
-            InterpretValue::Boolean(v) => v.to_string(),
-            InterpretValue::String(v) => v.clone(),
-            InterpretValue::Pointer(v, t) => format!("Pointer({t:?}): {v:#x}"),
-            InterpretValue::Void => "void".to_string(),
-        }
+        self.to_string()
     }
 
     pub fn as_integer(&self) -> isize {

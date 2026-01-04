@@ -449,9 +449,14 @@ impl<'ctx> CodeGen<'ctx> {
         match expr {
             Expr::Literal(lit) => match lit {
                 Literal::Numeric(lit) => {
-                    let value = lit.split("_").next().unwrap();
+                    // Split at underscore using find instead of split to avoid allocation
+                    let value = if let Some(pos) = lit.find('_') {
+                        &lit[..pos]
+                    } else {
+                        lit
+                    };
                     let Some(num_type) = NumericType::from_literal(lit)? else {
-                        return Ok(if value.contains(".") {
+                        return Ok(if value.contains('.') {
                             Some(BasicValueEnum::FloatValue(
                                 self.context.f64_type().const_float(value.parse()?),
                             ))

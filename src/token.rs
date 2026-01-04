@@ -51,7 +51,13 @@ pub enum NumericType {
 
 impl NumericType {
     pub fn from_literal(literal: &str) -> anyhow::Result<Option<Self>> {
-        let suffix = literal.split("_").last().unwrap();
+        // Find the suffix after the underscore using rfind to avoid allocating a Vec
+        let suffix = if let Some(pos) = literal.rfind('_') {
+            &literal[pos + 1..]
+        } else {
+            ""
+        };
+        
         if suffix.is_empty() {
             Ok(None)
         } else {
